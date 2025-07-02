@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>教会の部屋予約</title>
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: sans-serif;
+            padding: 10px;
+        }
+        h1 {
+            text-align: center;
+            font-size: 1.5em;
+        }
+        #roomSelect {
+            display: block;
+            margin: 20px auto;
+            font-size: 1em;
+            padding: 5px;
+            width: 90%;
+            max-width: 300px;
+        }
+        #calendar {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 0 10px;
+        }
+        #saveChangesContainer {
+            text-align: center;
+            margin-top: 10px;
+            display: none;
+        }
+        #saveChangesBtn {
+            padding: 10px 20px;
+            font-size: 1em;
+        }
+        @media (max-width: 600px) {
+            .fc-toolbar-title {
+                font-size: 1em !important;
+            }
+            .fc-col-header-cell-cushion {
+                font-size: 8px !important;
+                white-space: nowrap;
+            }
+            .fc-button {
+                font-size: 12px !important;
+                padding: 4px 6px;
+            }
+            #calendar {
+                padding: 0 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>教会の部屋予約システム</h1>
+
+    <select id="roomSelect">
+        {% for room in rooms %}
+            <option value="{{ room.id }}">{{ room.name }}</option>
+        {% endfor %}
+    </select>
+
+    <div id="calendar"></div>
+
+    <div id="saveChangesContainer">
+        <button id="saveChangesBtn">変更を保存</button>
+    </div>
+
+    <div id="inputModal" style="display:none; position:fixed; top:30%; left:10%; right:10%; background:#fff; padding:20px; border:1px solid #ccc; box-shadow: 0 0 10px #aaa; z-index:9999;">
+        <h3>予約タイトルを入力</h3>
+        <input type="text" id="modalTitle" style="width:100%; padding:6px;">
+        <div style="margin-top:10px; text-align:right;">
+            <button onclick="submitModal()">OK</button>
+            <button onclick="closeModal()">キャンセル</button>
+        </div>
+    </div>
+
+    <script>
+    let currentRoomId = document.getElementById('roomSelect').value;
+    let currentInfo = null;
+    let modifiedEvents = new Set();
+    let lastClickTime = 0;  // ← 外に出す
+
+    let defaultView = window.innerWidth < 600 ? 'timeGridDay' : 'timeGridWeek';
+
+    const calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
+        initialView: defaultView,
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'timeGridDay,timeGridWeek,dayGridMonth'
+        },
+        contentHeight: 'auto',
+        selectable: true,
+        editable: true,
+        longPressDelay: 100,              // タッチ長押し → 予約作成などに反応するまでの時間（デフォルト: 1000ms）
+    eventLongPressDelay: 100,         // イベントの長押し（移動・変更）の反応速度
+    selectLongPressDelay: 100,        // 予約作成のための長押し反応速度
+        selectMirror: true,
+        locale: 'ja',
+
+        events: function (info, successCallback, failureCallback) {
+            fetch(`/events/${currentRoomId}`)
+                .then(response => response.json())
+                .then(data => successCallback(data))
+                .catch(error => failureCallback(error));
+        },
+
+        select: function (info) {
+            currentInfo = {
+                start: info.start,
+                end: info.end
+            };
+            document.getElementById("modalTitle").value = "";
+            document.getElementById("inputModal").style.display = "block";
+            setTimeout(() => {
+                const input = document.getElementById("modalTitle");
+                input.focus();
+                input.scrollIntoView({ behavior: "smooth", block: "center" });
+            }, 300);
+        },
+
+        dateClick: function (info) {
+            const start = new Date(info.date);
+            const end = new Date(info.date);
+            end.setHours(end.getHours() + 1); // 1時間後
+
+            currentInfo = { start, end };
+            document.getElementById("modalTitle").value = "";
+            document.getElementById("inputModal").style.display = "block";
+            setTimeout(() => {
+                const input = document.getElementById("modalTitle");
+                input.focus();
+                input.scrollIntoView({ behavior: "smooth", block: "center" });
+            }, 300);
+        },
+
+        eventClick: function (info) {
+            const now = new Date().getTime();
+            if (now - lastClickTime < 400) {
+                if (confirm(`「${info.event.title}」の予約を削除しますか？`)) {
+                    fetch(`/delete/${info.event.id}`, {
+                        method: "DELETE"
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.status === "success") {
+                                alert("削除されました");
+                                calendar.refetchEvents();
+                            }
+                        });
+                }
+            }
+            lastClickTime = now;
+        },
+
+        eventDrop: function (info) {
+            markAsModified(info.event);
+        },
+
+        eventResize: function (info) {
+            markAsModified(info.event);
+        }
+    });
+
+    function markAsModified(event) {
+        modifiedEvents.add(event.id);
+        document.getElementById("saveChangesContainer").style.display = "block";
+    }
+
+    function closeModal() {
+        document.getElementById("inputModal").style.display = "none";
+        currentInfo = null;
+    }
+
+    function submitModal() {
+        const title = document.getElementById("modalTitle").value;
+        if (title && currentInfo && currentRoomId) {
+            const start = new Date(currentInfo.start).toISOString();
+            const end = new Date(currentInfo.end).toISOString();
+
+            fetch("/reserve", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    title: title,
+                    start: start,
+                    end: end,
+                    room_id: parseInt(currentRoomId)
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === "success") {
+                        alert("予約が完了しました！");
+                        calendar.refetchEvents();
+                    }
+                });
+        }
+        closeModal();
+    }
+
+    document.getElementById("saveChangesBtn").addEventListener("click", () => {
+        let promises = [];
+        modifiedEvents.forEach(id => {
+            const event = calendar.getEventById(id);
+            if (event) {
+                const data = {
+                    title: event.title,
+                    start: event.start.toISOString(),
+                    end: event.end.toISOString()
+                };
+                promises.push(
+                    fetch(`/update/${id}`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(data)
+                    })
+                );
+            }
+        });
+
+        Promise.all(promises)
+            .then(() => {
+                alert("変更が保存されました");
+                modifiedEvents.clear();
+                document.getElementById("saveChangesContainer").style.display = "none";
+                calendar.refetchEvents();
+            })
+            .catch(err => {
+                alert("更新に失敗しました");
+                console.error(err);
+            });
+    });
+
+    calendar.render();
+
+    document.getElementById('roomSelect').addEventListener('change', function () {
+        currentRoomId = this.value;
+        calendar.refetchEvents();
+    });
+</script>

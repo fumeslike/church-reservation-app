@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>部屋の管理</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 700px;
+            margin: 30px auto;
+            padding: 10px;
+        }
+        h1 {
+            text-align: center;
+        }
+        form {
+            margin: 10px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 6px;
+        }
+        td form {
+            display: flex;
+            gap: 5px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 4px;
+        }
+        button {
+            padding: 4px 8px;
+        }
+        .back-link {
+            margin-top: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>部屋の管理</h1>
+
+    <!-- 新規追加フォーム -->
+    <form method="POST">
+        <input type="text" name="name" placeholder="新しい部屋名" required>
+        <button type="submit">追加</button>
+    </form>
+
+    <!-- 部屋一覧 -->
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>部屋名（編集可能）</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for room in rooms %}
+            <tr>
+                <td>{{ room.id }}</td>
+                <td>
+                    <!-- 編集フォーム -->
+                    <form method="POST" action="/rooms/edit/{{ room.id }}">
+                        <input type="text" name="name" value="{{ room.name }}" required>
+                        <button type="submit">更新</button>
+                    </form>
+                </td>
+                <td>
+                    <!-- 削除フォーム -->
+                    <form method="POST" action="/rooms/delete/{{ room.id }}" onsubmit="return confirm('本当に削除しますか？')">
+                        <button type="submit">削除</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="back-link">
+        <p><a href="/">← 予約画面に戻る</a></p>
+    </div>
+
+</body>
+</html>
+
